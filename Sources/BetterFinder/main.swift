@@ -1337,7 +1337,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         window.minSize = NSSize(width: 960, height: 640)
         window.isReleasedWhenClosed = false; window.delegate = self
         window.tabbingIdentifier = "BetterFinder.Browser"
-        window.tabbingMode = .preferred
+        window.tabbingMode = .disallowed
         window.contentViewController = viewport
         windows.append(window)
         if let existing { existing.addTabbedWindow(window, ordered: .above) }

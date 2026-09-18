@@ -59,6 +59,8 @@ public final class ChronoRibbonView: NSView {
 
     private func makeSnapshotTile(index: Int, isSelected: Bool) -> NSView {
         let btn = NSButton(frame: .zero)
+        btn.title = ""
+        btn.imagePosition = .noImage
         btn.bezelStyle = .regularSquare
         btn.isBordered = false
         btn.wantsLayer = true
@@ -76,16 +78,22 @@ public final class ChronoRibbonView: NSView {
             btn.layer?.shadowRadius = 8
             btn.layer?.shadowOpacity = 0.8
         } else {
-            btn.layer?.backgroundColor = NSColor(hex: 0x0E1424).withAlphaComponent(0.65).cgColor
+            btn.layer?.backgroundColor = NSColor(hex: 0x0E1424).withAlphaComponent(0.7).cgColor
             btn.layer?.borderWidth = 0.5
             btn.layer?.borderColor = NSColor(white: 1.0, alpha: 0.15).cgColor
         }
 
         // Mini preview graphic inside tile
         let miniCanvas = MiniClusterPreview(index: index)
-        miniCanvas.frame = NSRect(x: 4, y: 4, width: 44, height: 32)
-        miniCanvas.autoresizingMask = [.width, .height]
+        miniCanvas.translatesAutoresizingMaskIntoConstraints = false
         btn.addSubview(miniCanvas)
+
+        NSLayoutConstraint.activate([
+            miniCanvas.leadingAnchor.constraint(equalTo: btn.leadingAnchor, constant: 4),
+            miniCanvas.trailingAnchor.constraint(equalTo: btn.trailingAnchor, constant: -4),
+            miniCanvas.topAnchor.constraint(equalTo: btn.topAnchor, constant: 4),
+            miniCanvas.bottomAnchor.constraint(equalTo: btn.bottomAnchor, constant: -4)
+        ])
 
         return btn
     }
@@ -112,15 +120,19 @@ private final class MiniClusterPreview: NSView {
 
         let center = CGPoint(x: bounds.midX, y: bounds.midY)
         // Mini aura ring
-        ctx.setStrokeColor(NSColor(red: 0.0, green: 0.85, blue: 1.0, alpha: 0.6).cgColor)
-        ctx.setLineWidth(1.0)
-        ctx.strokeEllipse(in: bounds.insetBy(dx: 6, dy: 6))
+        ctx.setStrokeColor(NSColor(red: 0.0, green: 0.94, blue: 1.0, alpha: 0.8).cgColor)
+        ctx.setLineWidth(1.2)
+        ctx.strokeEllipse(in: bounds.insetBy(dx: 8, dy: 6))
 
-        // Mini cards
-        let cardColor = NSColor(white: 1.0, alpha: 0.6).cgColor
-        ctx.setFillColor(cardColor)
-        ctx.fill(CGRect(x: center.x - 10, y: center.y - 6, width: 8, height: 12))
-        ctx.fill(CGRect(x: center.x + 2, y: center.y - 6, width: 8, height: 12))
+        // Secondary ring
+        ctx.setStrokeColor(NSColor(red: 0.74, green: 0.0, blue: 1.0, alpha: 0.5).cgColor)
+        ctx.setLineWidth(0.8)
+        ctx.strokeEllipse(in: bounds.insetBy(dx: 12, dy: 8))
+
+        // Mini cards inside
+        ctx.setFillColor(NSColor(white: 1.0, alpha: 0.75).cgColor)
+        ctx.fill(CGRect(x: center.x - 12, y: center.y - 7, width: 9, height: 14))
+        ctx.fill(CGRect(x: center.x + 3, y: center.y - 7, width: 9, height: 14))
     }
 }
 

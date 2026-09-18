@@ -66,7 +66,7 @@ public final class GravityWellView: NSView {
 
         NSLayoutConstraint.activate([
             titleLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
-            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 4)
+            titleLabel.bottomAnchor.constraint(equalTo: topAnchor, constant: -10)
         ])
     }
 

@@ -446,9 +446,10 @@ public final class GenericFileCardView: NSView {
         icon.translatesAutoresizingMaskIntoConstraints = false
 
         let titleLabel = NSTextField(labelWithString: title)
-        titleLabel.font = .systemFont(ofSize: 11, weight: .medium)
+        titleLabel.font = .systemFont(ofSize: 10, weight: .medium)
         titleLabel.textColor = .white
-        titleLabel.lineBreakMode = .byTruncatingMiddle
+        titleLabel.maximumNumberOfLines = 2
+        titleLabel.lineBreakMode = .byWordWrapping
         titleLabel.alignment = .center
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
@@ -457,13 +458,13 @@ public final class GenericFileCardView: NSView {
 
         NSLayoutConstraint.activate([
             icon.centerXAnchor.constraint(equalTo: centerXAnchor),
-            icon.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -8),
+            icon.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -10),
             icon.widthAnchor.constraint(equalToConstant: isFolder ? 36 : 30),
             icon.heightAnchor.constraint(equalToConstant: isFolder ? 32 : 36),
 
-            titleLabel.topAnchor.constraint(equalTo: icon.bottomAnchor, constant: 6),
-            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
-            titleLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4)
+            titleLabel.topAnchor.constraint(equalTo: icon.bottomAnchor, constant: 4),
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
+            titleLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2)
         ])
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -590,11 +591,12 @@ public final class GlassCardContainer: NSView {
 
     private func addBottomLabel(_ text: String) {
         let label = NSTextField(labelWithString: text)
-        label.font = .systemFont(ofSize: 10, weight: .medium)
-        label.textColor = NSColor(white: 0.92, alpha: 1.0)
-        label.lineBreakMode = .byTruncatingMiddle
+        label.font = .systemFont(ofSize: 9.5, weight: .medium)
+        label.textColor = NSColor(white: 0.94, alpha: 1.0)
+        label.maximumNumberOfLines = 2
+        label.lineBreakMode = .byWordWrapping
         label.alignment = .center
-        label.frame = NSRect(x: 6, y: 4, width: bounds.width - 12, height: 18)
+        label.frame = NSRect(x: 2, y: 2, width: bounds.width - 4, height: 22)
         label.autoresizingMask = [.width, .maxYMargin]
         addSubview(label)
     }

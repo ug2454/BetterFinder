@@ -114,7 +114,7 @@ public struct CanvasPreset {
             subtitle: ".step · 24 MB",
             kind: .genericFile(title: "3D CAD turntable", subtitle: ".step", iconName: "cube.transparent", isFolder: false),
             position: CGPoint(x: 345, y: 350),
-            size: CGSize(width: 100, height: 130),
+            size: CGSize(width: 115, height: 130),
             clusterId: c1.id,
             socketColor: NSColor(red: 0.0, green: 0.94, blue: 1.0, alpha: 1.0)
         ))
@@ -151,13 +151,13 @@ public struct CanvasPreset {
         ))
 
         // MARK: - Cluster 2: Design System Lenses (Center)
-        let c2Center = CGPoint(x: 720, y: 360)
+        let c2Center = CGPoint(x: 725, y: 360)
         let c2 = SpatialCluster(
             id: "cluster-lenses",
             title: "Design System Lenses",
             subtitle: "Core visual & audio modalities",
             center: c2Center,
-            bounds: CGRect(x: 570, y: 200, width: 310, height: 320),
+            bounds: CGRect(x: 565, y: 200, width: 325, height: 320),
             nodeIds: ["c2-audio1", "c2-audio2", "c2-vector", "c2-code"],
             auraPrimaryColor: NSColor(red: 0.0, green: 0.94, blue: 1.0, alpha: 0.65),
             auraSecondaryColor: NSColor(red: 1.0, green: 0.0, blue: 0.48, alpha: 0.5) // Pink/Magenta
@@ -169,8 +169,8 @@ public struct CanvasPreset {
             title: "Audio spectrogram",
             subtitle: "Spatial ambience",
             kind: .audioSpectrogram(title: "Audio spectrogram", subtitle: "78.9k ms", style: .cyanMagenta),
-            position: CGPoint(x: 605, y: 390),
-            size: CGSize(width: 110, height: 115),
+            position: CGPoint(x: 595, y: 390),
+            size: CGSize(width: 125, height: 115),
             clusterId: c2.id,
             socketColor: NSColor(red: 0.0, green: 0.94, blue: 1.0, alpha: 1.0)
         ))
@@ -180,8 +180,8 @@ public struct CanvasPreset {
             title: "Audio spectrogram",
             subtitle: "Stem analyzer",
             kind: .audioSpectrogram(title: "Audio spectrogram", subtitle: "Master mix", style: .pinkViolet),
-            position: CGPoint(x: 725, y: 390),
-            size: CGSize(width: 110, height: 115),
+            position: CGPoint(x: 735, y: 390),
+            size: CGSize(width: 125, height: 115),
             clusterId: c2.id,
             socketColor: NSColor(red: 1.0, green: 0.0, blue: 0.48, alpha: 1.0)
         ))
@@ -191,8 +191,8 @@ public struct CanvasPreset {
             title: "Vector glyph canvas",
             subtitle: "SVG tokens",
             kind: .vectorGlyphs(title: "Vector glyph canvas", subtitle: "Tokens"),
-            position: CGPoint(x: 605, y: 265),
-            size: CGSize(width: 110, height: 115),
+            position: CGPoint(x: 595, y: 265),
+            size: CGSize(width: 125, height: 115),
             clusterId: c2.id
         ))
 
@@ -206,8 +206,8 @@ public struct CanvasPreset {
                   return object
                 </prism>
                 """),
-            position: CGPoint(x: 725, y: 265),
-            size: CGSize(width: 110, height: 115),
+            position: CGPoint(x: 735, y: 265),
+            size: CGSize(width: 125, height: 115),
             clusterId: c2.id,
             socketColor: NSColor(red: 0.74, green: 0.0, blue: 1.0, alpha: 1.0)
         ))
