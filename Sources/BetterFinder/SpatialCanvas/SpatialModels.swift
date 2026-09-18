@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import DirectoryCore
 
 public enum MicroSurfaceKind: Equatable {
     case turntable3D(title: String, subtitle: String)
@@ -10,6 +11,14 @@ public enum MicroSurfaceKind: Equatable {
     case vectorGlyphs(title: String, subtitle: String)
     case videoAsset(title: String, subtitle: String)
     case genericFile(title: String, subtitle: String, iconName: String, isFolder: Bool)
+
+    // Real filesystem micro-surface modalities
+    case realFolder(title: String, subtitle: String, folderURL: URL, itemCount: Int?)
+    case realCode(title: String, subtitle: String, fileURL: URL, snippet: String, language: String)
+    case realImage(title: String, subtitle: String, imageURL: URL)
+    case realAudio(title: String, subtitle: String, fileURL: URL, style: AudioStyle)
+    case real3D(title: String, subtitle: String, fileURL: URL)
+    case realFile(title: String, subtitle: String, fileURL: URL, icon: NSImage, sizeStr: String)
 
     public enum AudioStyle {
         case cyanMagenta
@@ -26,8 +35,23 @@ public struct SpatialCardNode: Identifiable {
     public var size: CGSize
     public var clusterId: String
     public var socketColor: NSColor
+    public var url: URL?
+    public var fileEntry: FileEntry?
+    public var isSelected: Bool
 
-    public init(id: String, title: String, subtitle: String = "", kind: MicroSurfaceKind, position: CGPoint, size: CGSize, clusterId: String, socketColor: NSColor = .systemCyan) {
+    public init(
+        id: String,
+        title: String,
+        subtitle: String = "",
+        kind: MicroSurfaceKind,
+        position: CGPoint,
+        size: CGSize,
+        clusterId: String,
+        socketColor: NSColor = .systemCyan,
+        url: URL? = nil,
+        fileEntry: FileEntry? = nil,
+        isSelected: Bool = false
+    ) {
         self.id = id
         self.title = title
         self.subtitle = subtitle
@@ -36,6 +60,9 @@ public struct SpatialCardNode: Identifiable {
         self.size = size
         self.clusterId = clusterId
         self.socketColor = socketColor
+        self.url = url
+        self.fileEntry = fileEntry
+        self.isSelected = isSelected
     }
 }
 
@@ -416,5 +443,288 @@ public struct CanvasPreset {
         ))
 
         return (clusters, nodes, filaments)
+    }
+
+    // MARK: - Dynamic Real Filesystem Cluster Generator
+    public static func makeClusters(from entries: [FileEntry], parentURL: URL) -> (clusters: [SpatialCluster], nodes: [SpatialCardNode], filaments: [SynapticFilament]) {
+        var clusters: [SpatialCluster] = []
+        var nodes: [SpatialCardNode] = []
+        var filaments: [SynapticFilament] = []
+
+        if entries.isEmpty {
+            let isAccessIssue = !FullDiskAccessHelper.isGranted
+            let emptyCluster = SpatialCluster(
+                id: "cluster-empty",
+                title: parentURL.lastPathComponent,
+                subtitle: isAccessIssue ? "Full Disk Access Recommended" : "Empty directory",
+                center: CGPoint(x: 600, y: 400),
+                bounds: CGRect(x: 350, y: 220, width: 500, height: 360),
+                nodeIds: ["node-empty"],
+                auraPrimaryColor: isAccessIssue ? NSColor(red: 1.0, green: 0.6, blue: 0.0, alpha: 0.7) : NSColor(red: 0.0, green: 0.94, blue: 1.0, alpha: 0.6),
+                auraSecondaryColor: isAccessIssue ? NSColor(red: 0.9, green: 0.2, blue: 0.1, alpha: 0.5) : NSColor(red: 0.47, green: 0.16, blue: 0.79, alpha: 0.4)
+            )
+            let emptyNode = SpatialCardNode(
+                id: "node-empty",
+                title: isAccessIssue ? "Full Disk Access Required" : "Folder is Empty",
+                subtitle: isAccessIssue ? "Click shield icon in top HUD to grant access" : parentURL.path,
+                kind: .genericFile(
+                    title: isAccessIssue ? "Full Disk Access Required" : "Folder is Empty",
+                    subtitle: isAccessIssue ? "Click shield icon in top HUD to grant access" : parentURL.path,
+                    iconName: isAccessIssue ? "lock.shield.fill" : "folder.badge.questionmark",
+                    isFolder: true
+                ),
+                position: CGPoint(x: 480, y: 340),
+                size: CGSize(width: 240, height: 130),
+                clusterId: emptyCluster.id,
+                url: parentURL
+            )
+            return ([emptyCluster], [emptyNode], [])
+        }
+
+        // Categorize entries
+        let codeExtensions: Set<String> = [
+            "swift", "py", "js", "ts", "jsx", "tsx", "json", "yml", "yaml", "toml",
+            "sh", "bash", "zsh", "c", "cpp", "h", "hpp", "rs", "go", "html", "css",
+            "scss", "sql", "rb", "php", "java", "kt", "xml", "plist", "lock", "env", "proto"
+        ]
+        let mediaExtensions: Set<String> = [
+            "png", "jpg", "jpeg", "gif", "webp", "svg", "icns", "heic", "tiff", "bmp",
+            "mp3", "wav", "m4a", "flac", "aac", "ogg", "aif", "aiff",
+            "usdz", "obj", "dae", "stl", "gltf", "glb", "step",
+            "mov", "mp4", "m4v"
+        ]
+
+        var folderEntries: [FileEntry] = []
+        var codeEntries: [FileEntry] = []
+        var mediaEntries: [FileEntry] = []
+        var docEntries: [FileEntry] = []
+
+        for entry in entries {
+            if entry.canBrowse {
+                folderEntries.append(entry)
+            } else {
+                let ext = entry.url.pathExtension.lowercased()
+                if codeExtensions.contains(ext) {
+                    codeEntries.append(entry)
+                } else if mediaExtensions.contains(ext) {
+                    mediaEntries.append(entry)
+                } else {
+                    docEntries.append(entry)
+                }
+            }
+        }
+
+        struct CategoryDef {
+            let id: String
+            let title: String
+            let subtitle: String
+            let entries: [FileEntry]
+            let auraPrimaryColor: NSColor
+            let auraSecondaryColor: NSColor
+            let socketColor: NSColor
+        }
+
+        var activeCategories: [CategoryDef] = []
+        if !folderEntries.isEmpty {
+            activeCategories.append(CategoryDef(
+                id: "cluster-folders",
+                title: "Directories & Workspaces",
+                subtitle: "\(folderEntries.count) subfolders",
+                entries: folderEntries,
+                auraPrimaryColor: NSColor(red: 0.0, green: 0.94, blue: 1.0, alpha: 0.75),
+                auraSecondaryColor: NSColor(red: 0.06, green: 0.73, blue: 0.51, alpha: 0.5),
+                socketColor: NSColor(red: 0.0, green: 0.94, blue: 1.0, alpha: 1.0)
+            ))
+        }
+        if !codeEntries.isEmpty {
+            activeCategories.append(CategoryDef(
+                id: "cluster-code",
+                title: "Code & Architecture",
+                subtitle: "\(codeEntries.count) source files",
+                entries: codeEntries,
+                auraPrimaryColor: NSColor(red: 0.47, green: 0.16, blue: 0.79, alpha: 0.75),
+                auraSecondaryColor: NSColor(red: 0.0, green: 0.94, blue: 1.0, alpha: 0.55),
+                socketColor: NSColor(red: 0.74, green: 0.0, blue: 1.0, alpha: 1.0)
+            ))
+        }
+        if !mediaEntries.isEmpty {
+            activeCategories.append(CategoryDef(
+                id: "cluster-media",
+                title: "Media & Assets",
+                subtitle: "\(mediaEntries.count) visual & audio assets",
+                entries: mediaEntries,
+                auraPrimaryColor: NSColor(red: 1.0, green: 0.0, blue: 0.48, alpha: 0.75),
+                auraSecondaryColor: NSColor(red: 1.0, green: 0.5, blue: 0.0, alpha: 0.5),
+                socketColor: NSColor(red: 1.0, green: 0.0, blue: 0.48, alpha: 1.0)
+            ))
+        }
+        if !docEntries.isEmpty {
+            activeCategories.append(CategoryDef(
+                id: "cluster-docs",
+                title: "Documents & Data",
+                subtitle: "\(docEntries.count) items",
+                entries: docEntries,
+                auraPrimaryColor: NSColor(red: 0.0, green: 0.44, blue: 0.95, alpha: 0.7),
+                auraSecondaryColor: NSColor(red: 0.5, green: 0.0, blue: 0.9, alpha: 0.45),
+                socketColor: NSColor(red: 0.0, green: 0.44, blue: 0.95, alpha: 1.0)
+            ))
+        }
+
+        // Compute Cluster Base Centers in 2.5D space
+        let clusterOrigins: [CGPoint]
+        switch activeCategories.count {
+        case 1:
+            clusterOrigins = [CGPoint(x: 650, y: 460)]
+        case 2:
+            clusterOrigins = [CGPoint(x: 420, y: 460), CGPoint(x: 1080, y: 460)]
+        case 3:
+            clusterOrigins = [CGPoint(x: 360, y: 560), CGPoint(x: 1040, y: 560), CGPoint(x: 700, y: 220)]
+        default:
+            clusterOrigins = [
+                CGPoint(x: 360, y: 640),
+                CGPoint(x: 1080, y: 640),
+                CGPoint(x: 360, y: 220),
+                CGPoint(x: 1080, y: 220)
+            ]
+        }
+
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+
+        for (catIndex, cat) in activeCategories.enumerated() {
+            let baseCenter = catIndex < clusterOrigins.count ? clusterOrigins[catIndex] : CGPoint(x: 700 + CGFloat(catIndex * 400), y: 400)
+            var catNodeIds: [String] = []
+            var catNodePositions: [CGPoint] = []
+            var catNodeSizes: [CGSize] = []
+
+            // Limit displayed cards per cluster to 12 for clean aesthetics and performance
+            let maxItems = min(12, cat.entries.count)
+            let itemsToDisplay = Array(cat.entries.prefix(maxItems))
+
+            // Layout in columns
+            let columns = min(3, max(2, Int(ceil(sqrt(Double(maxItems))))))
+            let cardW: CGFloat = cat.id == "cluster-code" ? 175 : (cat.id == "cluster-media" ? 160 : 135)
+            let cardH: CGFloat = cat.id == "cluster-code" ? 135 : (cat.id == "cluster-media" ? 130 : 105)
+            let spacingX: CGFloat = 20
+            let spacingY: CGFloat = 20
+
+            let totalW = CGFloat(columns) * cardW + CGFloat(columns - 1) * spacingX
+            let rows = Int(ceil(Double(itemsToDisplay.count) / Double(columns)))
+            let totalH = CGFloat(rows) * cardH + CGFloat(rows - 1) * spacingY
+
+            let startX = baseCenter.x - totalW / 2
+            let startY = baseCenter.y + totalH / 2 - cardH
+
+            for (idx, entry) in itemsToDisplay.enumerated() {
+                let col = idx % columns
+                let row = idx / columns
+                let posX = startX + CGFloat(col) * (cardW + spacingX)
+                let posY = startY - CGFloat(row) * (cardH + spacingY)
+                let pos = CGPoint(x: posX, y: posY)
+                let size = CGSize(width: cardW, height: cardH)
+
+                let nodeId = "\(cat.id)-\(idx)"
+                catNodeIds.append(nodeId)
+                catNodePositions.append(pos)
+                catNodeSizes.append(size)
+
+                let ext = entry.url.pathExtension.lowercased()
+                let kind: MicroSurfaceKind
+
+                if entry.canBrowse {
+                    kind = .realFolder(title: entry.name, subtitle: "Folder", folderURL: entry.url, itemCount: nil)
+                } else if codeExtensions.contains(ext) {
+                    let snippet = readCodeSnippet(from: entry.url, maxLines: 7)
+                    kind = .realCode(title: entry.name, subtitle: ext.uppercased(), fileURL: entry.url, snippet: snippet, language: ext)
+                } else if ["png", "jpg", "jpeg", "gif", "webp", "svg", "icns", "heic", "tiff"].contains(ext) {
+                    kind = .realImage(title: entry.name, subtitle: formatter.string(fromByteCount: entry.size), imageURL: entry.url)
+                } else if ["mp3", "wav", "m4a", "flac", "aac", "ogg", "aif", "aiff"].contains(ext) {
+                    kind = .realAudio(title: entry.name, subtitle: formatter.string(fromByteCount: entry.size), fileURL: entry.url, style: idx % 2 == 0 ? .cyanMagenta : .pinkViolet)
+                } else if ["usdz", "obj", "dae", "stl", "gltf", "glb", "step"].contains(ext) {
+                    kind = .real3D(title: entry.name, subtitle: ext.uppercased(), fileURL: entry.url)
+                } else {
+                    let icon = NSWorkspace.shared.icon(forFile: entry.url.path)
+                    let sizeStr = formatter.string(fromByteCount: entry.size)
+                    kind = .realFile(title: entry.name, subtitle: sizeStr, fileURL: entry.url, icon: icon, sizeStr: sizeStr)
+                }
+
+                let cardNode = SpatialCardNode(
+                    id: nodeId,
+                    title: entry.name,
+                    subtitle: entry.canBrowse ? "Folder" : formatter.string(fromByteCount: entry.size),
+                    kind: kind,
+                    position: pos,
+                    size: size,
+                    clusterId: cat.id,
+                    socketColor: cat.socketColor,
+                    url: entry.url,
+                    fileEntry: entry,
+                    isSelected: false
+                )
+                nodes.append(cardNode)
+            }
+
+            // Compute cluster bounds
+            let minX = (catNodePositions.map { $0.x }.min() ?? baseCenter.x) - 45
+            let maxX = (catNodePositions.enumerated().map { $0.element.x + catNodeSizes[$0.offset].width }.max() ?? (baseCenter.x + 100)) + 45
+            let minY = (catNodePositions.map { $0.y }.min() ?? baseCenter.y) - 45
+            let maxY = (catNodePositions.enumerated().map { $0.element.y + catNodeSizes[$0.offset].height }.max() ?? (baseCenter.y + 100)) + 55
+
+            let clusterBounds = CGRect(x: minX, y: minY, width: max(260, maxX - minX), height: max(200, maxY - minY))
+            let clusterCenter = CGPoint(x: clusterBounds.midX, y: clusterBounds.midY)
+
+            let cluster = SpatialCluster(
+                id: cat.id,
+                title: cat.title,
+                subtitle: cat.subtitle,
+                center: clusterCenter,
+                bounds: clusterBounds,
+                nodeIds: catNodeIds,
+                auraPrimaryColor: cat.auraPrimaryColor,
+                auraSecondaryColor: cat.auraSecondaryColor
+            )
+            clusters.append(cluster)
+        }
+
+        // Generate dynamic synaptic filaments between primary nodes across clusters
+        if clusters.count >= 2 {
+            for i in 0..<(clusters.count - 1) {
+                if let fromId = clusters[i].nodeIds.first, let toId = clusters[i + 1].nodeIds.first {
+                    filaments.append(SynapticFilament(
+                        id: "fil-\(i)-\(i+1)",
+                        fromNodeId: fromId,
+                        toNodeId: toId,
+                        color: NSColor(red: 0.0, green: 0.94, blue: 1.0, alpha: 0.75),
+                        controlPointOffset: CGPoint(x: 0, y: -30)
+                    ))
+                }
+            }
+        }
+
+        // Add intra-cluster filaments if multiple items exist
+        for cluster in clusters {
+            if cluster.nodeIds.count >= 3 {
+                filaments.append(SynapticFilament(
+                    id: "intra-\(cluster.id)",
+                    fromNodeId: cluster.nodeIds[0],
+                    toNodeId: cluster.nodeIds[1],
+                    color: cluster.auraPrimaryColor.withAlphaComponent(0.65),
+                    controlPointOffset: CGPoint(x: 15, y: 15)
+                ))
+            }
+        }
+
+        return (clusters, nodes, filaments)
+    }
+
+    private static func readCodeSnippet(from url: URL, maxLines: Int = 8) -> String {
+        guard let data = try? Data(contentsOf: url, options: .alwaysMapped) else { return "// Empty file" }
+        let chunk = data.prefix(1500)
+        guard let str = String(data: chunk, encoding: .utf8) ?? String(data: chunk, encoding: .ascii) else {
+            return "// Binary file"
+        }
+        let lines = str.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        if lines.isEmpty { return "// Empty file" }
+        return lines.prefix(maxLines).joined(separator: "\n")
     }
 }

@@ -313,7 +313,7 @@ private final class ExplorerController: NSViewController, NSTableViewDataSource,
         if inspectorWidth.constant != width { inspectorWidth.constant = width; inspector.isHidden = width == 0 }
     }
 
-    private func navigate(_ url: URL, historyTarget: Int? = nil, addHistory: Bool = true, selecting selectionURL: URL? = nil, preserveViewState: Bool = false, selectingURLs: [URL] = []) {
+    fileprivate func navigate(_ url: URL, historyTarget: Int? = nil, addHistory: Bool = true, selecting selectionURL: URL? = nil, preserveViewState: Bool = false, selectingURLs: [URL] = []) {
         loadTask?.cancel(); folderSizeTask?.cancel(); let token = UUID(); generation = token
         let savedSelection = preserveViewState ? Set(selectedURLs.map { $0.path }) : []
         let savedFilter = preserveViewState ? filterField.stringValue : ""
@@ -1059,16 +1059,17 @@ private final class MainViewportController: NSViewController {
     let explorer: ExplorerController
     private(set) var mode: ViewMode = .spatial
 
-    var onLocationChange: (() -> Void)? {
-        didSet { explorer.onLocationChange = onLocationChange }
-    }
+    var onLocationChange: (() -> Void)?
     var onMovedFiles: (([URL]) -> Void)? {
         didSet { explorer.onMovedFiles = onMovedFiles }
     }
-    var sessionURL: URL { explorer.sessionURL }
+    var sessionURL: URL { spatialCanvas.currentURL ?? explorer.sessionURL }
     var hasPendingFileOperation: Bool { explorer.hasPendingFileOperation }
 
+    private let initialURL: URL
+
     init(initialURL: URL) {
+        self.initialURL = initialURL
         self.explorer = ExplorerController(initialURL: initialURL)
         super.init(nibName: nil, bundle: nil)
     }
@@ -1089,6 +1090,27 @@ private final class MainViewportController: NSViewController {
         explorer.view.frame = view.bounds
         explorer.view.autoresizingMask = [.width, .height]
 
+        spatialCanvas.loadDirectory(initialURL)
+
+        spatialCanvas.onLocationChange = { [weak self] url in
+            guard let self else { return }
+            self.view.window?.title = url.path == "/" ? "Macintosh HD" : url.lastPathComponent
+            if self.explorer.sessionURL.standardizedFileURL.path != url.standardizedFileURL.path {
+                self.explorer.navigate(url)
+            }
+            self.onLocationChange?()
+        }
+
+        explorer.onLocationChange = { [weak self] in
+            guard let self else { return }
+            let url = self.explorer.sessionURL
+            self.view.window?.title = url.path == "/" ? "Macintosh HD" : url.lastPathComponent
+            if self.spatialCanvas.currentURL?.standardizedFileURL.path != url.standardizedFileURL.path {
+                self.spatialCanvas.loadDirectory(url, recordHistory: false)
+            }
+            self.onLocationChange?()
+        }
+
         spatialCanvas.onSwitchToClassicView = { [weak self] in
             self?.toggleMode()
         }
@@ -1102,20 +1124,32 @@ private final class MainViewportController: NSViewController {
         guard newMode != mode else { return }
         mode = newMode
         if mode == .classic {
+            if let cur = spatialCanvas.currentURL, explorer.sessionURL.standardizedFileURL.path != cur.standardizedFileURL.path {
+                explorer.navigate(cur)
+            }
             spatialCanvas.view.removeFromSuperview()
             view.addSubview(explorer.view)
         } else {
+            let cur = explorer.sessionURL
+            if spatialCanvas.currentURL?.standardizedFileURL.path != cur.standardizedFileURL.path {
+                spatialCanvas.loadDirectory(cur, recordHistory: false)
+            }
             explorer.view.removeFromSuperview()
             view.addSubview(spatialCanvas.view)
+            view.window?.makeFirstResponder(spatialCanvas)
         }
     }
 
     func refreshAfterMove(in folders: [URL]) {
         explorer.refreshAfterMove(in: folders)
+        if let cur = spatialCanvas.currentURL, folders.contains(where: { $0.standardizedFileURL.path == cur.standardizedFileURL.path }) {
+            spatialCanvas.loadDirectory(cur, recordHistory: false)
+        }
     }
 
     func revealExternally(_ urls: [URL], in folder: URL) {
         explorer.revealExternally(urls, in: folder)
+        spatialCanvas.loadDirectory(folder)
     }
 }
 
@@ -1254,31 +1288,21 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
             } else { groups.append((folder, openFolder ? [] : [url])) }
         }
         for group in groups {
-            let existing = windows.first { $0.explorerController?.sessionURL.standardizedFileURL.path == group.folder.standardizedFileURL.path }
-            let window = existing ?? makeWindow(at: group.folder, beside: activeWindow)
-            window.explorerController?.revealExternally(group.selection, in: group.folder)
-            window.makeKeyAndOrderFront(nil)
+            if let window = activeWindow {
+                window.viewportController?.spatialCanvas.loadDirectory(group.folder)
+                window.explorerController?.revealExternally(group.selection, in: group.folder)
+                window.makeKeyAndOrderFront(nil)
+            } else {
+                let window = makeWindow(at: group.folder)
+                window.explorerController?.revealExternally(group.selection, in: group.folder)
+                window.makeKeyAndOrderFront(nil)
+            }
         }
         NSApp.activate(ignoringOtherApps: true)
     }
     @objc private func configureFolderAccess(_ sender: Any?) {
         guard let window = activeWindow, window.attachedSheet == nil else { return }
-        let alert = NSAlert()
-        alert.messageText = "Allow access across folders"
-        alert.informativeText = "Enable BetterFinder in System Settings → Privacy & Security → Full Disk Access. This covers protected folders such as Desktop, Documents, and Downloads.\n\nIf BetterFinder isn’t listed, drag BetterFinder.app from the file viewer into the Full Disk Access list, or use the + button to add it. We’ll show you the app when you open settings.\n\nQuit and reopen BetterFinder after enabling access. macOS requires you to grant this permission yourself."
-        alert.addButton(withTitle: "Open Settings")
-        alert.addButton(withTitle: "Cancel")
-        alert.beginSheetModal(for: window) { response in
-            guard response == .alertFirstButtonReturn else { return }
-            NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
-            let settingsURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!
-            if !NSWorkspace.shared.open(settingsURL) {
-                let failure = NSAlert()
-                failure.messageText = "Open Full Disk Access in System Settings"
-                failure.informativeText = "Open System Settings manually, then choose Privacy & Security → Full Disk Access and enable BetterFinder."
-                failure.beginSheetModal(for: window, completionHandler: nil)
-            }
-        }
+        FullDiskAccessHelper.openSettings(for: window)
     }
 
     @objc private func useAsDefaultViewer(_ sender: Any?) {
@@ -1340,8 +1364,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         window.tabbingMode = .disallowed
         window.contentViewController = viewport
         windows.append(window)
-        if let existing { existing.addTabbedWindow(window, ordered: .above) }
-        else { window.center() }
+        window.center()
         window.makeKeyAndOrderFront(nil)
         return window
     }
@@ -1349,7 +1372,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
     @objc func newTab(_ sender: Any?) {
         let existing = activeWindow
         let url = existing?.explorerController?.sessionURL ?? FileManager.default.homeDirectoryForCurrentUser
-        _ = makeWindow(at: url, beside: existing)
+        _ = makeWindow(at: url)
         saveSession()
     }
 
@@ -1358,11 +1381,10 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         let saved = UserDefaults.standard.stringArray(forKey: "session.tabPaths") ?? []
         let paths = saved.filter { $0.hasPrefix("/") }
         let urls = paths.isEmpty ? [FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("MyProjects/BetterFinder")] : paths.map { URL(fileURLWithPath: $0) }
-        var previous: BrowserWindow?
-        for url in urls { previous = makeWindow(at: url, beside: previous) }
-        let index = max(0, min(UserDefaults.standard.integer(forKey: "session.selectedTab"), windows.count - 1))
-        windows[index].tabGroup?.selectedWindow = windows[index]
-        windows[index].makeKeyAndOrderFront(nil)
+        let index = max(0, min(UserDefaults.standard.integer(forKey: "session.selectedTab"), urls.count - 1))
+        let targetURL = urls[index]
+        let window = makeWindow(at: targetURL)
+        window.makeKeyAndOrderFront(nil)
         restoringSession = false
         saveSession()
     }

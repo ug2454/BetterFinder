@@ -470,14 +470,178 @@ public final class GenericFileCardView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 }
 
+// MARK: - Real Folder Micro-Surface
+public final class RealFolderCardView: NSView {
+    public init(title: String, subtitle: String) {
+        super.init(frame: .zero)
+        wantsLayer = true
+
+        let icon = NSImageView()
+        icon.image = NSImage(systemSymbolName: "folder.fill", accessibilityDescription: title)
+        icon.contentTintColor = NSColor(red: 0.0, green: 0.94, blue: 1.0, alpha: 0.95)
+        icon.imageScaling = .scaleProportionallyUpOrDown
+        icon.translatesAutoresizingMaskIntoConstraints = false
+
+        let titleLabel = NSTextField(labelWithString: title)
+        titleLabel.font = .systemFont(ofSize: 11, weight: .semibold)
+        titleLabel.textColor = .white
+        titleLabel.maximumNumberOfLines = 2
+        titleLabel.lineBreakMode = .byWordWrapping
+        titleLabel.alignment = .center
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let subLabel = NSTextField(labelWithString: subtitle)
+        subLabel.font = .systemFont(ofSize: 9, weight: .regular)
+        subLabel.textColor = NSColor(red: 0.0, green: 0.85, blue: 0.95, alpha: 0.7)
+        subLabel.alignment = .center
+        subLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        addSubview(icon)
+        addSubview(titleLabel)
+        addSubview(subLabel)
+
+        NSLayoutConstraint.activate([
+            icon.centerXAnchor.constraint(equalTo: centerXAnchor),
+            icon.topAnchor.constraint(equalTo: topAnchor, constant: 14),
+            icon.widthAnchor.constraint(equalToConstant: 40),
+            icon.heightAnchor.constraint(equalToConstant: 34),
+
+            titleLabel.topAnchor.constraint(equalTo: icon.bottomAnchor, constant: 6),
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            titleLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+
+            subLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 2),
+            subLabel.centerXAnchor.constraint(equalTo: centerXAnchor)
+        ])
+    }
+    required init?(coder: NSCoder) { fatalError() }
+}
+
+// MARK: - Real Image Thumbnail Micro-Surface
+public final class RealImageCardView: NSView {
+    private let imageView = NSImageView()
+
+    public init(title: String, subtitle: String, imageURL: URL) {
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = 10
+        layer?.masksToBounds = true
+
+        imageView.imageScaling = .scaleProportionallyUpOrDown
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(imageView)
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let img = NSImage(contentsOf: imageURL)
+            DispatchQueue.main.async { [weak self] in
+                self?.imageView.image = img
+            }
+        }
+
+        let footer = NSView()
+        footer.wantsLayer = true
+        footer.layer?.backgroundColor = NSColor(hex: 0x0A0F1D).withAlphaComponent(0.85).cgColor
+        footer.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(footer)
+
+        let label = NSTextField(labelWithString: title)
+        label.font = .systemFont(ofSize: 9.5, weight: .medium)
+        label.textColor = .white
+        label.lineBreakMode = .byTruncatingMiddle
+        label.translatesAutoresizingMaskIntoConstraints = false
+        footer.addSubview(label)
+
+        let sub = NSTextField(labelWithString: subtitle)
+        sub.font = .systemFont(ofSize: 8.5, weight: .regular)
+        sub.textColor = NSColor(white: 0.7, alpha: 1.0)
+        sub.translatesAutoresizingMaskIntoConstraints = false
+        footer.addSubview(sub)
+
+        NSLayoutConstraint.activate([
+            imageView.topAnchor.constraint(equalTo: topAnchor, constant: 4),
+            imageView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            imageView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+            imageView.bottomAnchor.constraint(equalTo: footer.topAnchor),
+
+            footer.leadingAnchor.constraint(equalTo: leadingAnchor),
+            footer.trailingAnchor.constraint(equalTo: trailingAnchor),
+            footer.bottomAnchor.constraint(equalTo: bottomAnchor),
+            footer.heightAnchor.constraint(equalToConstant: 28),
+
+            label.leadingAnchor.constraint(equalTo: footer.leadingAnchor, constant: 6),
+            label.trailingAnchor.constraint(equalTo: footer.trailingAnchor, constant: -6),
+            label.topAnchor.constraint(equalTo: footer.topAnchor, constant: 2),
+
+            sub.leadingAnchor.constraint(equalTo: footer.leadingAnchor, constant: 6),
+            sub.trailingAnchor.constraint(equalTo: footer.trailingAnchor, constant: -6),
+            sub.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 1)
+        ])
+    }
+    required init?(coder: NSCoder) { fatalError() }
+}
+
+// MARK: - Real File Micro-Surface
+public final class RealFileCardView: NSView {
+    public init(title: String, subtitle: String, icon: NSImage) {
+        super.init(frame: .zero)
+        wantsLayer = true
+
+        let iconView = NSImageView()
+        iconView.image = icon
+        iconView.imageScaling = .scaleProportionallyUpOrDown
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+
+        let titleLabel = NSTextField(labelWithString: title)
+        titleLabel.font = .systemFont(ofSize: 10, weight: .medium)
+        titleLabel.textColor = .white
+        titleLabel.maximumNumberOfLines = 2
+        titleLabel.lineBreakMode = .byWordWrapping
+        titleLabel.alignment = .center
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let subLabel = NSTextField(labelWithString: subtitle)
+        subLabel.font = .systemFont(ofSize: 8.5, weight: .regular)
+        subLabel.textColor = NSColor(white: 0.65, alpha: 1.0)
+        subLabel.alignment = .center
+        subLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        addSubview(iconView)
+        addSubview(titleLabel)
+        addSubview(subLabel)
+
+        NSLayoutConstraint.activate([
+            iconView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            iconView.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+            iconView.widthAnchor.constraint(equalToConstant: 34),
+            iconView.heightAnchor.constraint(equalToConstant: 34),
+
+            titleLabel.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 5),
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            titleLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+
+            subLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 2),
+            subLabel.centerXAnchor.constraint(equalTo: centerXAnchor)
+        ])
+    }
+    required init?(coder: NSCoder) { fatalError() }
+}
+
 // MARK: - Master Glass Card Container (Iridescent Rim & Frosted Fill)
 public final class GlassCardContainer: NSView {
     public let node: SpatialCardNode
     private var borderGradientLayer = CAGradientLayer()
     private var shapeMask = CAShapeLayer()
+    private var borderLayer = CAShapeLayer()
     private var contentContainer = NSView()
+
     public var onDrag: ((CGPoint) -> Void)?
+    public var onOpenFolder: ((URL) -> Void)?
+    public var onOpenFile: ((URL) -> Void)?
+    public var onSelect: ((SpatialCardNode) -> Void)?
+    public var onQuickLook: ((URL) -> Void)?
+
     private var dragStartOrigin: CGPoint?
+    private var isCardSelected = false
 
     public init(node: SpatialCardNode) {
         self.node = node
@@ -490,12 +654,29 @@ public final class GlassCardContainer: NSView {
         super.updateLayer()
         borderGradientLayer.frame = bounds
         shapeMask.path = CGPath(roundedRect: bounds, cornerWidth: 14, cornerHeight: 14, transform: nil)
+        borderLayer.path = CGPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), cornerWidth: 14, cornerHeight: 14, transform: nil)
     }
 
     public override func layout() {
         super.layout()
         borderGradientLayer.frame = bounds
         shapeMask.path = CGPath(roundedRect: bounds, cornerWidth: 14, cornerHeight: 14, transform: nil)
+        borderLayer.path = CGPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), cornerWidth: 14, cornerHeight: 14, transform: nil)
+    }
+
+    public func setSelected(_ selected: Bool) {
+        isCardSelected = selected
+        if selected {
+            borderLayer.strokeColor = NSColor(red: 0.0, green: 0.94, blue: 1.0, alpha: 0.95).cgColor
+            borderLayer.lineWidth = 1.8
+            layer?.shadowColor = NSColor(red: 0.0, green: 0.94, blue: 1.0, alpha: 0.7).cgColor
+            layer?.shadowRadius = 18
+        } else {
+            borderLayer.strokeColor = NSColor(white: 1.0, alpha: 0.22).cgColor
+            borderLayer.lineWidth = 0.75
+            layer?.shadowColor = NSColor.black.cgColor
+            layer?.shadowRadius = 16
+        }
     }
 
     private func setupGlassSurface() {
@@ -513,7 +694,6 @@ public final class GlassCardContainer: NSView {
         layer?.shadowRadius = 16
 
         // Iridescent Specular Border Glow
-        let borderLayer = CAShapeLayer()
         borderLayer.path = CGPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), cornerWidth: 14, cornerHeight: 14, transform: nil)
         borderLayer.strokeColor = NSColor(white: 1.0, alpha: 0.22).cgColor
         borderLayer.fillColor = nil
@@ -576,6 +756,45 @@ public final class GlassCardContainer: NSView {
             fileView.frame = bounds
             fileView.autoresizingMask = [.width, .height]
             contentContainer.addSubview(fileView)
+
+        // Real filesystem modalities
+        case .realFolder(let t, let sub, _, _):
+            let folderView = RealFolderCardView(title: t, subtitle: sub)
+            folderView.frame = bounds
+            folderView.autoresizingMask = [.width, .height]
+            contentContainer.addSubview(folderView)
+
+        case .realCode(let t, _, _, let snippet, _):
+            let code = CodePrismView(snippet: snippet)
+            code.frame = NSRect(x: 6, y: 24, width: bounds.width - 12, height: bounds.height - 30)
+            code.autoresizingMask = [.width, .height]
+            contentContainer.addSubview(code)
+            addBottomLabel(t)
+
+        case .realImage(let t, let sub, let imgURL):
+            let imgCard = RealImageCardView(title: t, subtitle: sub, imageURL: imgURL)
+            imgCard.frame = bounds
+            imgCard.autoresizingMask = [.width, .height]
+            contentContainer.addSubview(imgCard)
+
+        case .realAudio(let t, _, _, let style):
+            let audio = AudioSpectrogramView(style: style)
+            audio.frame = NSRect(x: 8, y: 26, width: bounds.width - 16, height: bounds.height - 34)
+            audio.autoresizingMask = [.width, .height]
+            contentContainer.addSubview(audio)
+            addBottomLabel(t)
+
+        case .real3D(let t, _, _):
+            let turntable = Turntable3DView(frame: NSRect(x: 4, y: 28, width: bounds.width - 8, height: bounds.height - 34))
+            turntable.autoresizingMask = [.width, .height]
+            contentContainer.addSubview(turntable)
+            addBottomLabel(t)
+
+        case .realFile(let t, let sub, _, let icon, _):
+            let fileView = RealFileCardView(title: t, subtitle: sub, icon: icon)
+            fileView.frame = bounds
+            fileView.autoresizingMask = [.width, .height]
+            contentContainer.addSubview(fileView)
         }
 
         // Add Socket Port Dot on left/right for synaptic filaments
@@ -601,7 +820,7 @@ public final class GlassCardContainer: NSView {
         addSubview(label)
     }
 
-    // Interactive Dragging on Canvas
+    // Mouse events
     public override func mouseDown(with event: NSEvent) {
         dragStartOrigin = frame.origin
         super.mouseDown(with: event)
@@ -611,6 +830,57 @@ public final class GlassCardContainer: NSView {
         let newOrigin = CGPoint(x: frame.origin.x + event.deltaX, y: frame.origin.y - event.deltaY)
         frame.origin = newOrigin
         onDrag?(newOrigin)
+    }
+
+    public override func mouseUp(with event: NSEvent) {
+        super.mouseUp(with: event)
+        if event.clickCount == 2 {
+            if let url = node.url {
+                if node.fileEntry?.canBrowse == true {
+                    onOpenFolder?(url)
+                } else {
+                    onOpenFile?(url)
+                }
+            }
+        } else if event.clickCount == 1 {
+            onSelect?(node)
+        }
+    }
+
+    public override func menu(for event: NSEvent) -> NSMenu? {
+        guard node.url != nil else { return nil }
+        onSelect?(node)
+        let menu = NSMenu()
+        menu.addItem(withTitle: "Open", action: #selector(contextOpen), keyEquivalent: "o").target = self
+        menu.addItem(withTitle: "Quick Look", action: #selector(contextQuickLook), keyEquivalent: "y").target = self
+        menu.addItem(withTitle: "Reveal in Finder", action: #selector(contextReveal), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Copy Path", action: #selector(contextCopyPath), keyEquivalent: "c").target = self
+        return menu
+    }
+
+    @objc private func contextOpen() {
+        guard let url = node.url else { return }
+        if node.fileEntry?.canBrowse == true {
+            onOpenFolder?(url)
+        } else {
+            onOpenFile?(url)
+        }
+    }
+
+    @objc private func contextQuickLook() {
+        guard let url = node.url else { return }
+        onQuickLook?(url)
+    }
+
+    @objc private func contextReveal() {
+        guard let url = node.url else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
+    @objc private func contextCopyPath() {
+        guard let url = node.url else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(url.path, forType: .string)
     }
 }
 

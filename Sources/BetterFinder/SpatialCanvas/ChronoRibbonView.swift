@@ -1,23 +1,59 @@
 import AppKit
 import QuartzCore
 
-// MARK: - Chrono-Ribbon Floating Dock (Bottom Snapshot Carousel)
+public struct RibbonShortcutItem {
+    public let title: String
+    public let symbol: String
+    public let url: URL?
+    public let isDemo: Bool
+}
+
+// MARK: - Chrono-Ribbon Floating Dock (Real Places & Concept Presets)
 public final class ChronoRibbonView: NSView {
+    public var onSelectURL: ((URL) -> Void)?
+    public var onSelectDemo: (() -> Void)?
     public var onSelectCluster: ((Int) -> Void)?
-    private var selectedIndex: Int = 3
-    private var itemViews: [NSView] = []
+
+    private var selectedIndex: Int = 1
+    private var itemButtons: [NSButton] = []
+    private var shortcuts: [RibbonShortcutItem] = []
+    private let borderLayer = CAShapeLayer()
 
     public override init(frame: NSRect) {
         super.init(frame: frame)
+        setupShortcuts()
         setupRibbon()
     }
     required init?(coder: NSCoder) { fatalError() }
+
+    public override func layout() {
+        super.layout()
+        borderLayer.frame = bounds
+        borderLayer.path = CGPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), cornerWidth: 24, cornerHeight: 24, transform: nil)
+    }
+
+    private func setupShortcuts() {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let projectsURL = FileManager.default.fileExists(atPath: home.appendingPathComponent("MyProjects").path)
+            ? home.appendingPathComponent("MyProjects")
+            : home.appendingPathComponent("Projects")
+
+        shortcuts = [
+            RibbonShortcutItem(title: "Home", symbol: "house.fill", url: home, isDemo: false),
+            RibbonShortcutItem(title: "Projects", symbol: "hammer.fill", url: projectsURL, isDemo: false),
+            RibbonShortcutItem(title: "Downloads", symbol: "arrow.down.circle.fill", url: home.appendingPathComponent("Downloads"), isDemo: false),
+            RibbonShortcutItem(title: "Documents", symbol: "doc.text.fill", url: home.appendingPathComponent("Documents"), isDemo: false),
+            RibbonShortcutItem(title: "Desktop", symbol: "display", url: home.appendingPathComponent("Desktop"), isDemo: false),
+            RibbonShortcutItem(title: "Macintosh HD", symbol: "internaldrive.fill", url: URL(fileURLWithPath: "/"), isDemo: false),
+            RibbonShortcutItem(title: "Cyberne ✦", symbol: "sparkles", url: nil, isDemo: true)
+        ]
+    }
 
     private func setupRibbon() {
         wantsLayer = true
         layer?.cornerRadius = 24
         layer?.masksToBounds = false
-        layer?.backgroundColor = NSColor(hex: 0x0A0F1D).withAlphaComponent(0.80).cgColor
+        layer?.backgroundColor = NSColor(hex: 0x0A0F1D).withAlphaComponent(0.85).cgColor
 
         // Ambient Occlusion Shadow
         layer?.shadowColor = NSColor.black.cgColor
@@ -26,40 +62,36 @@ public final class ChronoRibbonView: NSView {
         layer?.shadowRadius = 14
 
         // Hairline Specular Border
-        let border = CAShapeLayer()
-        border.path = CGPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), cornerWidth: 24, cornerHeight: 24, transform: nil)
-        border.strokeColor = NSColor(white: 1.0, alpha: 0.2).cgColor
-        border.fillColor = nil
-        border.lineWidth = 0.75
-        layer?.addSublayer(border)
+        borderLayer.strokeColor = NSColor(white: 1.0, alpha: 0.2).cgColor
+        borderLayer.fillColor = nil
+        borderLayer.lineWidth = 0.75
+        layer?.addSublayer(borderLayer)
 
-        // Stack of miniature cluster snapshot tiles
+        // Stack of shortcut buttons
         let stack = NSStackView()
         stack.orientation = .horizontal
-        stack.spacing = 10
+        stack.spacing = 8
         stack.alignment = .centerY
         stack.distribution = .fillEqually
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
 
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
             stack.topAnchor.constraint(equalTo: topAnchor, constant: 6),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6)
         ])
 
-        // 8 thumbnail tiles matching Image 1
-        for i in 0..<8 {
-            let tile = makeSnapshotTile(index: i, isSelected: i == selectedIndex)
-            itemViews.append(tile)
+        for (i, item) in shortcuts.enumerated() {
+            let tile = makeShortcutTile(index: i, item: item, isSelected: i == selectedIndex)
+            itemButtons.append(tile)
             stack.addArrangedSubview(tile)
         }
     }
 
-    private func makeSnapshotTile(index: Int, isSelected: Bool) -> NSView {
-        let btn = NSButton(frame: .zero)
-        btn.title = ""
+    private func makeShortcutTile(index: Int, item: RibbonShortcutItem, isSelected: Bool) -> NSButton {
+        let btn = NSButton(title: "", target: nil, action: nil)
         btn.imagePosition = .noImage
         btn.bezelStyle = .regularSquare
         btn.isBordered = false
@@ -69,9 +101,47 @@ public final class ChronoRibbonView: NSView {
         btn.tag = index
         btn.target = self
         btn.action = #selector(tileClicked(_:))
+        btn.toolTip = item.isDemo ? "Cyberne 2026 Concept Demo" : (item.url?.path ?? item.title)
 
+        updateTileVisuals(btn, isSelected: isSelected)
+
+        // Inner tile layout: Icon + Label
+        let contentStack = NSStackView()
+        contentStack.orientation = .horizontal
+        contentStack.spacing = 6
+        contentStack.alignment = .centerY
+        contentStack.distribution = .fill
+        contentStack.translatesAutoresizingMaskIntoConstraints = false
+        btn.addSubview(contentStack)
+
+        let icon = NSImageView()
+        icon.image = NSImage(systemSymbolName: item.symbol, accessibilityDescription: item.title)
+        icon.contentTintColor = item.isDemo
+            ? NSColor(red: 1.0, green: 0.0, blue: 0.48, alpha: 0.95)
+            : (isSelected ? NSColor(red: 0.0, green: 0.94, blue: 1.0, alpha: 0.95) : NSColor.white.withAlphaComponent(0.8))
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        contentStack.addArrangedSubview(icon)
+
+        let label = NSTextField(labelWithString: item.title)
+        label.font = .systemFont(ofSize: 10, weight: isSelected ? .semibold : .regular)
+        label.textColor = isSelected ? .white : NSColor(white: 0.8, alpha: 1.0)
+        label.lineBreakMode = .byTruncatingTail
+        label.translatesAutoresizingMaskIntoConstraints = false
+        contentStack.addArrangedSubview(label)
+
+        NSLayoutConstraint.activate([
+            contentStack.centerXAnchor.constraint(equalTo: btn.centerXAnchor),
+            contentStack.centerYAnchor.constraint(equalTo: btn.centerYAnchor),
+            icon.widthAnchor.constraint(equalToConstant: 14),
+            icon.heightAnchor.constraint(equalToConstant: 14)
+        ])
+
+        return btn
+    }
+
+    private func updateTileVisuals(_ btn: NSButton, isSelected: Bool) {
         if isSelected {
-            btn.layer?.backgroundColor = NSColor(hex: 0x1E293B).withAlphaComponent(0.9).cgColor
+            btn.layer?.backgroundColor = NSColor(hex: 0x1E293B).withAlphaComponent(0.95).cgColor
             btn.layer?.borderWidth = 1.5
             btn.layer?.borderColor = NSColor(red: 0.0, green: 0.94, blue: 1.0, alpha: 0.9).cgColor
             btn.layer?.shadowColor = NSColor(red: 0.0, green: 0.94, blue: 1.0, alpha: 0.8).cgColor
@@ -81,26 +151,41 @@ public final class ChronoRibbonView: NSView {
             btn.layer?.backgroundColor = NSColor(hex: 0x0E1424).withAlphaComponent(0.7).cgColor
             btn.layer?.borderWidth = 0.5
             btn.layer?.borderColor = NSColor(white: 1.0, alpha: 0.15).cgColor
+            btn.layer?.shadowOpacity = 0
         }
+    }
 
-        // Mini preview graphic inside tile
-        let miniCanvas = MiniClusterPreview(index: index)
-        miniCanvas.translatesAutoresizingMaskIntoConstraints = false
-        btn.addSubview(miniCanvas)
-
-        NSLayoutConstraint.activate([
-            miniCanvas.leadingAnchor.constraint(equalTo: btn.leadingAnchor, constant: 4),
-            miniCanvas.trailingAnchor.constraint(equalTo: btn.trailingAnchor, constant: -4),
-            miniCanvas.topAnchor.constraint(equalTo: btn.topAnchor, constant: 4),
-            miniCanvas.bottomAnchor.constraint(equalTo: btn.bottomAnchor, constant: -4)
-        ])
-
-        return btn
+    public func highlightShortcut(for url: URL?) {
+        guard let url else {
+            // Check if demo
+            for (idx, btn) in itemButtons.enumerated() {
+                let selected = shortcuts[idx].isDemo
+                updateTileVisuals(btn, isSelected: selected)
+            }
+            return
+        }
+        for (idx, btn) in itemButtons.enumerated() {
+            let matches = shortcuts[idx].url?.standardizedFileURL.path == url.standardizedFileURL.path
+            updateTileVisuals(btn, isSelected: matches)
+        }
     }
 
     @objc private func tileClicked(_ sender: NSButton) {
-        selectedIndex = sender.tag
-        onSelectCluster?(sender.tag)
+        let index = sender.tag
+        guard index < shortcuts.count else { return }
+        selectedIndex = index
+
+        for (idx, btn) in itemButtons.enumerated() {
+            updateTileVisuals(btn, isSelected: idx == index)
+        }
+
+        let item = shortcuts[index]
+        if item.isDemo {
+            onSelectDemo?()
+        } else if let url = item.url {
+            onSelectURL?(url)
+        }
+        onSelectCluster?(index)
     }
 }
 
