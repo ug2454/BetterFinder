@@ -1049,6 +1049,89 @@ private final class ExplorerController: NSViewController, NSTableViewDataSource,
 }
 
 @MainActor
+private final class MainViewportController: NSViewController {
+    enum ViewMode {
+        case spatial
+        case classic
+    }
+
+    let spatialCanvas = SpatialCanvasViewController()
+    let explorer: ExplorerController
+    private(set) var mode: ViewMode = .spatial
+
+    var onLocationChange: (() -> Void)? {
+        didSet { explorer.onLocationChange = onLocationChange }
+    }
+    var onMovedFiles: (([URL]) -> Void)? {
+        didSet { explorer.onMovedFiles = onMovedFiles }
+    }
+    var sessionURL: URL { explorer.sessionURL }
+    var hasPendingFileOperation: Bool { explorer.hasPendingFileOperation }
+
+    init(initialURL: URL) {
+        self.explorer = ExplorerController(initialURL: initialURL)
+        super.init(nibName: nil, bundle: nil)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func loadView() {
+        view = NSView(frame: NSRect(x: 0, y: 0, width: 1440, height: 960))
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor(hex: 0x080A0F).cgColor
+
+        addChild(spatialCanvas)
+        addChild(explorer)
+
+        spatialCanvas.view.frame = view.bounds
+        spatialCanvas.view.autoresizingMask = [.width, .height]
+        view.addSubview(spatialCanvas.view)
+
+        explorer.view.frame = view.bounds
+        explorer.view.autoresizingMask = [.width, .height]
+
+        spatialCanvas.onSwitchToClassicView = { [weak self] in
+            self?.toggleMode()
+        }
+    }
+
+    func toggleMode() {
+        setMode(mode == .spatial ? .classic : .spatial)
+    }
+
+    func setMode(_ newMode: ViewMode) {
+        guard newMode != mode else { return }
+        mode = newMode
+        if mode == .classic {
+            spatialCanvas.view.removeFromSuperview()
+            view.addSubview(explorer.view)
+        } else {
+            explorer.view.removeFromSuperview()
+            view.addSubview(spatialCanvas.view)
+        }
+    }
+
+    func refreshAfterMove(in folders: [URL]) {
+        explorer.refreshAfterMove(in: folders)
+    }
+
+    func revealExternally(_ urls: [URL], in folder: URL) {
+        explorer.revealExternally(urls, in: folder)
+    }
+}
+
+private extension NSWindow {
+    var explorerController: ExplorerController? {
+        if let mv = contentViewController as? MainViewportController {
+            return mv.explorer
+        }
+        return contentViewController as? ExplorerController
+    }
+    var viewportController: MainViewportController? {
+        contentViewController as? MainViewportController
+    }
+}
+
+@MainActor
 private final class BrowserWindow: NSWindow {
     override func newWindowForTab(_ sender: Any?) {
         (NSApp.delegate as? AppDelegate)?.newTab(sender)
@@ -1072,7 +1155,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         if let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns") {
             NSApp.applicationIconImage = NSImage(contentsOf: iconURL)
         }
-        NSApp.appearance = NSAppearance(named: .aqua)
+        NSApp.appearance = NSAppearance(named: .darkAqua)
         let menu = NSMenu(), appMenu = NSMenu(), fileMenu = NSMenu(), viewMenu = NSMenu(), goMenu = NSMenu()
         for (title, submenu) in [("BetterFinder", appMenu), ("File", fileMenu), ("View", viewMenu), ("Go", goMenu)] {
             let item = NSMenuItem(title: title, action: nil, keyEquivalent: ""); item.submenu = submenu; menu.addItem(item)
@@ -1102,6 +1185,11 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         add(fileMenu, "Duplicate", #selector(ExplorerController.duplicateSelected(_:)), "d")
         add(fileMenu, "Move to Trash", #selector(ExplorerController.trashSelected), String(UnicodeScalar(NSBackspaceCharacter)!))
         fileMenu.addItem(withTitle: "Close Tab", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        let spatialItem = viewMenu.addItem(withTitle: "Spatial Neural Canvas", action: #selector(switchToSpatialCanvas), keyEquivalent: "1")
+        spatialItem.target = self
+        let classicItem = viewMenu.addItem(withTitle: "Classic Details View", action: #selector(switchToClassicView), keyEquivalent: "2")
+        classicItem.target = self
+        viewMenu.addItem(.separator())
         add(viewMenu, "Refresh", #selector(ExplorerController.refresh), "r")
         add(viewMenu, "Show / Hide Hidden Files", #selector(ExplorerController.toggleHidden), ".", modifiers: [.command, .shift])
         add(viewMenu, "Filter This Folder", #selector(ExplorerController.focusFilter), "f")
@@ -1128,6 +1216,13 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         let queued = pendingExternalOpens; pendingExternalOpens.removeAll()
         for request in queued { openExternal(request.urls, reveal: request.reveal) }
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc func switchToSpatialCanvas() {
+        activeWindow?.viewportController?.setMode(.spatial)
+    }
+    @objc func switchToClassicView() {
+        activeWindow?.viewportController?.setMode(.classic)
     }
 
     func application(_ application: NSApplication, open urls: [URL]) { openExternal(urls, reveal: false) }
@@ -1159,9 +1254,9 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
             } else { groups.append((folder, openFolder ? [] : [url])) }
         }
         for group in groups {
-            let existing = windows.first { ($0.contentViewController as? ExplorerController)?.sessionURL.standardizedFileURL.path == group.folder.standardizedFileURL.path }
+            let existing = windows.first { $0.explorerController?.sessionURL.standardizedFileURL.path == group.folder.standardizedFileURL.path }
             let window = existing ?? makeWindow(at: group.folder, beside: activeWindow)
-            (window.contentViewController as? ExplorerController)?.revealExternally(group.selection, in: group.folder)
+            window.explorerController?.revealExternally(group.selection, in: group.folder)
             window.makeKeyAndOrderFront(nil)
         }
         NSApp.activate(ignoringOtherApps: true)
@@ -1186,17 +1281,35 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         }
     }
 
-    @objc private func useAsDefaultViewer(_ sender: Any?) { changeDefaultViewer(enable: true) }
-    @objc private func restoreDefaultViewer(_ sender: Any?) { changeDefaultViewer(enable: false) }
-    private func changeDefaultViewer(enable: Bool) {
-        guard !changingDefaultViewer, let window = activeWindow, window.attachedSheet == nil else { return }
+    @objc private func useAsDefaultViewer(_ sender: Any?) {
+        guard let window = activeWindow, !changingDefaultViewer else { return }
         changingDefaultViewer = true
-        Task {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
             let alert = NSAlert()
             do {
-                if enable { try await DefaultFileViewer.enable() } else { try await DefaultFileViewer.restore() }
-                alert.messageText = enable ? "Default file viewer preference saved" : "Previous file viewer preference restored"
-                alert.informativeText = "Restart your Mac to apply the change, then try Reveal in Finder in Cursor. System Open/Save dialogs remain unchanged."
+                try await DefaultFileViewer.enable()
+                alert.messageText = "BetterFinder is now your default file viewer"
+                alert.informativeText = "External folders and Reveal in Finder actions will now open in BetterFinder.\n\nYou may need to restart other open applications for this change to take effect everywhere."
+            } catch {
+                alert.messageText = "Couldn’t change the default file viewer"
+                alert.informativeText = error.localizedDescription
+            }
+            self.changingDefaultViewer = false
+            if window.attachedSheet == nil { alert.beginSheetModal(for: window, completionHandler: nil) }
+        }
+    }
+
+    @objc private func restoreDefaultViewer(_ sender: Any?) {
+        guard let window = activeWindow, !changingDefaultViewer else { return }
+        changingDefaultViewer = true
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let alert = NSAlert()
+            do {
+                try await DefaultFileViewer.restore()
+                alert.messageText = "Restored previous file viewer"
+                alert.informativeText = "External folders and Reveal in Finder actions will now open with your previous file viewer (such as Finder).\n\nYou may need to restart other open applications for this change to take effect everywhere."
             } catch {
                 alert.messageText = "Couldn’t change the default file viewer"
                 alert.informativeText = error.localizedDescription
@@ -1207,33 +1320,35 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
     }
 
     private func makeWindow(at url: URL, beside existing: BrowserWindow? = nil) -> BrowserWindow {
-        let explorer = ExplorerController(initialURL: url)
-        explorer.onLocationChange = { [weak self] in self?.saveSession() }
-        explorer.onMovedFiles = { [weak self, weak explorer] folders in
+        let viewport = MainViewportController(initialURL: url)
+        viewport.onLocationChange = { [weak self] in self?.saveSession() }
+        viewport.onMovedFiles = { [weak self, weak viewport] folders in
             guard let self else { return }
             for window in self.windows {
-                if let other = window.contentViewController as? ExplorerController, other !== explorer { other.refreshAfterMove(in: folders) }
+                if let other = window.explorerController, other !== viewport?.explorer { other.refreshAfterMove(in: folders) }
             }
         }
-        let window = BrowserWindow(contentRect: NSRect(x: 0, y: 0, width: 1380, height: 860),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+        let window = BrowserWindow(contentRect: NSRect(x: 0, y: 0, width: 1440, height: 920),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         window.title = url.path == "/" ? "Macintosh HD" : url.lastPathComponent
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.backgroundColor = NSColor(hex: 0x080A0F)
         window.minSize = NSSize(width: 960, height: 640)
         window.isReleasedWhenClosed = false; window.delegate = self
         window.tabbingIdentifier = "BetterFinder.Browser"
         window.tabbingMode = .preferred
-        window.contentViewController = explorer
+        window.contentViewController = viewport
         windows.append(window)
         if let existing { existing.addTabbedWindow(window, ordered: .above) }
         else { window.center() }
         window.makeKeyAndOrderFront(nil)
-        if window.tabGroup?.isTabBarVisible == false { window.toggleTabBar(nil) }
         return window
     }
 
     @objc func newTab(_ sender: Any?) {
         let existing = activeWindow
-        let url = (existing?.contentViewController as? ExplorerController)?.sessionURL ?? FileManager.default.homeDirectoryForCurrentUser
+        let url = existing?.explorerController?.sessionURL ?? FileManager.default.homeDirectoryForCurrentUser
         _ = makeWindow(at: url, beside: existing)
         saveSession()
     }
@@ -1261,14 +1376,14 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
                    !ordered.contains(where: { $0 === browser }) { ordered.append(browser) }
             }
         }
-        let paths = ordered.compactMap { ($0.contentViewController as? ExplorerController)?.sessionURL.path }
+        let paths = ordered.compactMap { $0.explorerController?.sessionURL.path }
         UserDefaults.standard.set(paths, forKey: "session.tabPaths")
         UserDefaults.standard.set(ordered.firstIndex(where: { $0 === activeWindow }) ?? 0, forKey: "session.selectedTab")
     }
 
     func windowDidBecomeMain(_ notification: Notification) { saveSession() }
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        guard (sender.contentViewController as? ExplorerController)?.hasPendingFileOperation != true else {
+        guard sender.explorerController?.hasPendingFileOperation != true else {
             NSSound.beep(); return false
         }
         return true
@@ -1281,7 +1396,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         if !windows.isEmpty { DispatchQueue.main.async { [weak self] in self?.saveSession() } }
     }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        if windows.contains(where: { ($0.contentViewController as? ExplorerController)?.hasPendingFileOperation == true }) {
+        if windows.contains(where: { $0.explorerController?.hasPendingFileOperation == true }) {
             NSSound.beep(); return .terminateCancel
         }
         saveSession(); terminating = true
